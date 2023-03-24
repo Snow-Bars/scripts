@@ -17,10 +17,8 @@ os.remove("/opt/vmids_stop")
 for vmid in running:
     if vmid != "" and vmid != 0:
         subprocess.run(["ha-manager", "add", "vm:" + vmid, "--group", group, "--state", "started"])
-        subprocess.run(["echo", "vmid is", vmid])
 
 #add VMs to HA resources state stopped
 for vmid in stopped:
     if vmid != "" and vmid != 0:
         subprocess.run(["ha-manager", "add", "vm:" + vmid, "--group", group, "--state", "stopped"])
-        subprocess.run(["echo", "vmid is", vmid])
