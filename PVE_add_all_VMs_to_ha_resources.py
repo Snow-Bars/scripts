@@ -1,24 +1,16 @@
-#!/bin/python3
+#!/usr/bin/python3
 
-import os
+from proxmoxer import ProxmoxAPI
 import subprocess
+import getpass
 
-#define HA group
-group = "all_hosts"
-#create lists of VMs and states
-os.system("qm list | grep running | awk '{print $1}' | tail -n +1 > /opt/vmids_run")
-running = open("/opt/vmids_run", "r").read().split("\n")
-os.remove("/opt/vmids_run")
-os.system("qm list | grep stopped | awk '{print $1}' | tail -n +1 > /opt/vmids_stop")
-stopped = open("/opt/vmids_stop", "r").read().split("\n")
-os.remove("/opt/vmids_stop")
+pve_ip = 'enter ip or DNS name here'
+ha_group = 'enter ha-group you want to use for resources here'
 
-#add VMs to HA resources state started
-for vmid in running:
-    if vmid != "" and vmid != 0:
-        subprocess.run(["ha-manager", "add", "vm:" + vmid, "--group", group, "--state", "started"])
-
-#add VMs to HA resources state stopped
-for vmid in stopped:
-    if vmid != "" and vmid != 0:
-        subprocess.run(["ha-manager", "add", "vm:" + vmid, "--group", group, "--state", "stopped"])
+passwd = getpass.getpass('root password is: ')
+proxmox = ProxmoxAPI(pve_ip, user='root@pam', password=passwd, verify_ssl=False, service='PVE')
+for node in proxmox.nodes.get(): #get list of all nodes in the cluster over PVE API
+    if node['status'] == 'online': #check node is online
+        for vm in proxmox.nodes(node['node']).qemu.get(): #get all VMs from every node
+            if vm['status'] == 'running' or vm['status'] == 'stopped': #check VM status is started or stopped
+                subprocess.run(["ha-manager", "add", "vm:" + vm['vmid'], "--group", ha_group, "--state", vm['status']]) #set VM HA-managed with curent state
