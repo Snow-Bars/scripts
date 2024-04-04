@@ -1,0 +1,63 @@
+#Скрипт отслеживает создание, включение, отключение и удаление УЗ пользователей в указанной OU и создает или отключает почтовые ящики
+#Скрипт необходимо разложить на все DC и создать в шедалете задачу с триггерами на все указанные ниже ID событий журнала Security
+#ID: 4720 - создание УЗ, 4725 - отключение УЗ, 4738 - включение УЗ, 4726 - удаление УЗ
+$ou = "OU=Users,DC=contoso,DC=com"
+$exchlink = "http://"+"exhange server name or IP"+"/powershell/"
+$Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri $exchlink -Authentication Kerberos
+$Report = @()
+
+Get-WinEvent -MaxEvents 1 -FilterHashtable @{LogName="Security";ID=4720,4725,4726,4738} | foreach {
+    if ( $_.ID -eq 4720 -or 4725 -or 4726) {
+        $event = [xml]$_.ToXml()
+        if ($_.ID -ne 4738) { $NewUser = $event.Event.EventData.Data[0]."#text"}
+        else { $NewUser = $event.Event.EventData.Data[1]."#text" }
+        $objReport = [PSCustomObject]@{
+        User = $NewUser
+        ID = $_.ID
+            }
+        $Report += $objReport
+    }
+    elseif ( $_.ID -eq 4738) {
+        $event = [xml]$_.ToXml()
+        $NewUser = $event.Event.EventData.Data[1]."#text"
+        $objReport = [PSCustomObject]@{
+        User = $NewUser
+        ID = $_.ID
+            }
+        $Report += $objReport
+    }
+}
+$username = $Report.user
+
+if (Get-ADUser -Filter {samaccountname -eq $username} -SearchBase $ou -SearchScope OneLevel) {
+    write-host processing
+    if ($Report.ID -eq 4725) {
+        $mailbox = (get-aduser $Report.user -Properties samaccountname,mail).mail
+        if ($mailbox) {
+            write-host $Report.ID disabling $mailbox
+            Import-PSSession $Session -DisableNameChecking
+            Get-Mailbox -Identity $Report.User | Disable-Mailbox -Confirm:$false
+            Remove-PSSession $Session
+            }
+        }
+    elseif ($Report.ID -eq 4720) {
+        write-host $Report.ID enabling $mailbox
+        Import-PSSession $Session -DisableNameChecking
+        $dbname = (Get-Mailbox -ResultSize Unlimited | Group-Object -Property:Database | Select-Object Name, Count | Sort-Object Count).Name[0]
+        Enable-Mailbox -Identity $Report.User -Database $dbname
+        Remove-PSSession $Session
+    }
+    elseif ($Report.ID -eq 4738) {
+        write-host $Report.ID enabling $Report.User
+        Import-PSSession $Session -DisableNameChecking
+        $dbname = (Get-Mailbox -ResultSize Unlimited | Group-Object -Property:Database | Select-Object Name, Count | Sort-Object Count).Name[0]
+        Enable-Mailbox -Identity $Report.User -Database $dbname
+        Remove-PSSession $Session
+    }
+}
+elseif ($Report.ID -eq 4726) {
+    write-host $Report.ID disabling $mailbox
+    Import-PSSession $Session -DisableNameChecking
+    Get-Mailbox -Identity $Report.User | Disable-Mailbox -Confirm:$false
+    Remove-PSSession $Session
+}
