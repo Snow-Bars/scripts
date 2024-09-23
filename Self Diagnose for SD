@@ -1,0 +1,105 @@
+#блок переменных
+$dc1 = "dc1_DNSname"
+$dc2 = "dc2_DNSname"
+$core_office = '' | Select-Object @{n="name";e={"network_core1_name"}}, @{n="address";e={"network_core1_IP_address"}}
+$core_cod = '' | Select-Object @{n="name";e={"network_core2_name"}}, @{n="address";e={"network_core2_address"}}
+
+#Создание формы
+$i=0
+Add-Type -Assemblyname System.Windows.Forms
+$form = New-Object System.Windows.Forms.Form
+$form.Text = 'Диагностика'
+$label = New-Object System.Windows.Forms.Label
+$label.Text = ''
+$label.Location = New-Object System.Drawing.Point(20,10)
+$label.Size = New-Object System.Drawing.Size(500,20)
+$form.Controls.Add($label)
+$bar = New-Object System.Windows.Forms.ProgressBar
+$bar.Minimum = 0
+$bar.Maximum = 4
+$bar.Location = New-Object System.Drawing.Point(20,470)
+$bar.Size = New-Object System.Drawing.Size(450,20)
+$form.Controls.Add($bar)
+$text = New-Object System.Windows.Forms.TextBox
+$text.Multiline = $true
+$text.Text = 'Нажми кнопку "Диагностика" или клавишу Enter'
+$text.Location = New-Object System.Drawing.Point(20,40)
+$text.Size = New-Object System.Drawing.Point(450,350)
+$form.Controls.Add($text)
+$Form.StartPosition = "CenterScreen"
+$form.KeyPreview = $true
+$form.Add_KeyDown{
+    param ( 
+        [Parameter(Mandatory)][Object]$sender,
+        [Parameter(Mandatory)][System.Windows.Forms.KeyEventArgs]$e
+    )
+    if($_.KeyCode -eq "Escape"){
+        $Form.close()
+    }
+    if($_.KeyCode -eq "Enter"){
+        $button.PerformClick()
+    }
+}
+$button = New-Object Windows.Forms.Button
+$button.Text = "Диагностика"
+$button.Location = New-Object System.Drawing.Point 145,400
+$button.Size = New-Object System.Drawing.Size 200,50
+
+#Действие по нажатии кнопки Диагностика
+$button.Add_Click({
+    $bar.Value = $i
+    $result = Get-NetIPAddress -AddressFamily IPv4 -IPAddress 192*
+    $text.Text = "IP адрес компьютера: " + $result + "`n"
+    $result = $Env:Username
+    $text.AppendText("Имя пользователя: " + $result + "`n")
+    $Error.Clear()
+    if (Test-Connection $dc1 -Count 2 -Quiet) { $result = "Контроллер домена $dc1 пингуется`n" }
+    else {
+        try {Test-Connection $dc1 -Count 1 -EA Stop}
+        catch {}
+        $result = "Контроллер домена $dc1 НЕ пингуется. `n"
+        $result = $result + "Ошибка: " + $Error[0] + "`n"
+        }
+    $text.AppendText($result)
+    $i++
+    $bar.Value = $i
+    $Error.Clear()
+    if (Test-Connection $dc2 -Count 2 -Quiet) { $result = "Контроллер домена $dc2 пингуется. `n" }
+    else {
+        try {Test-Connection $dc2 -Count 1 -EA stop}
+        catch {}
+        $result = "Контроллер домена $dc2 НЕ пингуется. `n"
+        $result = $result + "Ошибка: " + $Error[0] + "`n"
+    }
+    $text.AppendText($result)
+    $i++
+    $bar.Value = $i
+    $Error.Clear()
+    if (Test-Connection $core_office.address -Count 2 -Quiet) { $result = $core_office.Name + " пингуется. `n" }
+    else {
+        try {Test-Connection $core_office.address -Count 1 -EA Stop}
+        catch {}
+        $result = $core_office.Name + " НЕ пингуется. `n"
+        $result = $result + "Ошибка: " + $Error[0] + "`n"
+    }
+    $text.AppendText($result)
+    $i++
+    $bar.Value = $i
+    $Error.Clear()
+    if (Test-Connection $core_cod.address -Count 2 -Quiet) { $result = $core_cod.Name + " пингуется. `n" }
+    else {
+        try {Test-Connection $core_cod.address -Count 1 -EA Stop}
+        catch {}
+        $result = $core_cod.Name + " НЕ пингуется. `n"
+        $result = $result + "Ошибка: " + $Error[0] + "`n"
+    }
+    $text.AppendText($result)
+    $i++
+    $bar.Value = $i
+    $label.Text='Скопируйте и отправьте это сообщение в службу поддержки'
+    })
+$form.Controls.Add($button)
+
+#Старт формы
+$form.Size = New-Object System.Drawing.Size(500,570)
+$form.ShowDialog()
