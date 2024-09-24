@@ -1,8 +1,40 @@
-#блок переменных
-$dc1 = "dc1_DNSname"
-$dc2 = "dc2_DNSname"
-$core_office = '' | Select-Object @{n="name";e={"network_core1_name"}}, @{n="address";e={"network_core1_IP_address"}}
-$core_cod = '' | Select-Object @{n="name";e={"network_core2_name"}}, @{n="address";e={"network_core2_address"}}
+#массив для диагностики
+$fortest = @()
+$fortest += New-Object -TypeName psobject -Property @{description = 'Контроллер домена в '; Name = 'DNS-name'; port = '0'}
+$fortest += New-Object -TypeName psobject -Property @{description = 'Контроллер домена в '; Name ='DNS-name'; port = '0'}
+$fortest += New-Object -TypeName psobject -Property @{description = 'Ядро сети в'; Name = 'IP-address'; port = '0'}
+$fortest += New-Object -TypeName psobject -Property @{description = 'Ядро сети в'; Name = 'IP-address'; port = '0'}
+$fortest += New-Object -TypeName psobject -Property @{description = 'Сайт Ya.ru'; Name = 'ya.ru'; port = '443'}
+$fortest += New-Object -TypeName psobject -Property @{description = 'web-сервис'; Name = 'DNS-name'; port = '443'}
+$fortest += New-Object -TypeName psobject -Property @{description = 'Сервер 1С'; Name = 'DNS-name'; port = '0'}
+$fortest += New-Object -TypeName psobject -Property @{description = 'Почтовый сервер'; Name = 'mail...'; port = '25'}
+
+#функция пинга и описания результата
+Function Test-Conn {
+    param (
+    [string]$description,
+    [string]$objname,
+    [string]$port
+    )
+    $Error.Clear()
+    if (Test-Connection $objname -Count 2 -Quiet) { $result = $description + " пингуется`r`n" }
+    else {
+        try {Test-Connection $objname -Count 1 -EA Stop}
+        catch {}
+        $result = $description + " НЕ пингуется. `r`n"
+        $result = $result + "Ошибка: " + $Error[0] + "`r`n"
+        }
+    if ($port -ne "0") {
+        $connetction = New-Object System.Net.Sockets.TcpClient($objname, $port)
+        if ($connetction.Connected)
+        {$result = $result + $port + " порт для " + $description + " доступен `r`n"}
+        else {
+        $result = $description + $port + " порт недоступен. `r`n"
+        $result = $result + "Ошибка: " + $Error[0] + "`r`n"
+        }
+    }
+   $text.AppendText($result)
+}
 
 #Создание формы
 $i=0
@@ -16,7 +48,7 @@ $label.Size = New-Object System.Drawing.Size(500,20)
 $form.Controls.Add($label)
 $bar = New-Object System.Windows.Forms.ProgressBar
 $bar.Minimum = 0
-$bar.Maximum = 4
+$bar.Maximum = $fortest.Count+2
 $bar.Location = New-Object System.Drawing.Point(20,470)
 $bar.Size = New-Object System.Drawing.Size(450,20)
 $form.Controls.Add($bar)
@@ -28,6 +60,7 @@ $text.Size = New-Object System.Drawing.Point(450,350)
 $form.Controls.Add($text)
 $Form.StartPosition = "CenterScreen"
 $form.KeyPreview = $true
+#реагирование на нажатие Enter и Esc
 $form.Add_KeyDown{
     param ( 
         [Parameter(Mandatory)][Object]$sender,
@@ -42,63 +75,42 @@ $form.Add_KeyDown{
 }
 $button = New-Object Windows.Forms.Button
 $button.Text = "Диагностика"
-$button.Location = New-Object System.Drawing.Point 145,400
+$button.Location = New-Object System.Drawing.Point 20,400
 $button.Size = New-Object System.Drawing.Size 200,50
+$custom = New-Object Windows.Forms.Button
+$custom.Text = "Тестировать подключение"
+$custom.Location = New-Object System.Drawing.Point 270,400
+$custom.Size = New-Object System.Drawing.Size 200,50
 
 #Действие по нажатии кнопки Диагностика
 $button.Add_Click({
     $bar.Value = $i
-    $result = Get-NetIPAddress -AddressFamily IPv4 -IPAddress 192*
-    $text.Text = "IP адрес компьютера: " + $result + "`n"
+    $result = (Get-NetIPAddress -IPAddress mask_for_IP*).IPaddress #вместо mask_for_IP вписать преффикс сети
+    $text.Text = "IP адрес компьютера: " + $result + "`r`n"
+    $i++
+    $bar.Value = $i
     $result = $Env:Username
-    $text.AppendText("Имя пользователя: " + $result + "`n")
-    $Error.Clear()
-    if (Test-Connection $dc1 -Count 2 -Quiet) { $result = "Контроллер домена $dc1 пингуется`n" }
-    else {
-        try {Test-Connection $dc1 -Count 1 -EA Stop}
-        catch {}
-        $result = "Контроллер домена $dc1 НЕ пингуется. `n"
-        $result = $result + "Ошибка: " + $Error[0] + "`n"
-        }
-    $text.AppendText($result)
+    $text.AppendText("Имя пользователя: " + $result + "`r`n")
     $i++
     $bar.Value = $i
-    $Error.Clear()
-    if (Test-Connection $dc2 -Count 2 -Quiet) { $result = "Контроллер домена $dc2 пингуется. `n" }
-    else {
-        try {Test-Connection $dc2 -Count 1 -EA stop}
-        catch {}
-        $result = "Контроллер домена $dc2 НЕ пингуется. `n"
-        $result = $result + "Ошибка: " + $Error[0] + "`n"
+    foreach ($res in $fortest ) {
+        Test-Conn -description $res.description -objname $res.Name -port $res.port
+        $i++
+        $bar.Value = $i
     }
-    $text.AppendText($result)
-    $i++
-    $bar.Value = $i
-    $Error.Clear()
-    if (Test-Connection $core_office.address -Count 2 -Quiet) { $result = $core_office.Name + " пингуется. `n" }
-    else {
-        try {Test-Connection $core_office.address -Count 1 -EA Stop}
-        catch {}
-        $result = $core_office.Name + " НЕ пингуется. `n"
-        $result = $result + "Ошибка: " + $Error[0] + "`n"
-    }
-    $text.AppendText($result)
-    $i++
-    $bar.Value = $i
-    $Error.Clear()
-    if (Test-Connection $core_cod.address -Count 2 -Quiet) { $result = $core_cod.Name + " пингуется. `n" }
-    else {
-        try {Test-Connection $core_cod.address -Count 1 -EA Stop}
-        catch {}
-        $result = $core_cod.Name + " НЕ пингуется. `n"
-        $result = $result + "Ошибка: " + $Error[0] + "`n"
-    }
-    $text.AppendText($result)
-    $i++
-    $bar.Value = $i
     $label.Text='Скопируйте и отправьте это сообщение в службу поддержки'
     })
+
+$custom.Add_Click({
+    $objname = $text.Text
+    $result = (Get-NetIPAddress -IPAddress mask_for_IP*).IPaddress #вместо mask_for_IP вписать преффикс сети
+    $text.Text = "IP адрес компьютера: " + $result + "`r`n"
+    Test-Conn -description $objname -objname $objname -port 443
+    $bar.Value = $bar.Maximum
+})
+
 $form.Controls.Add($button)
+$form.Controls.Add($custom)
 
 #Старт формы
 $form.Size = New-Object System.Drawing.Size(500,570)
