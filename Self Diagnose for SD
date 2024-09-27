@@ -11,6 +11,22 @@ $fortest += New-Object -TypeName psobject -Property @{description = 'web-сер�
 $fortest += New-Object -TypeName psobject -Property @{description = 'Сервер 1С'; Name = 'DNS-name'; port = '0'}
 $fortest += New-Object -TypeName psobject -Property @{description = 'Почтовый сервер'; Name = 'mail...'; port = '25'}
 
+#функция теста порта
+Function TestTCP { Param($address, $port, $timeout=3000)
+    $socket=New-Object System.Net.Sockets.TcpClient
+    try {
+        $result=$socket.BeginConnect($address, $port, $NULL, $NULL)
+        if (!$result.AsyncWaitHandle.WaitOne($timeout, $False)) {
+            throw [System.Exception]::new('Connection Timeout')
+        }
+        $socket.EndConnect($result) | Out-Null
+        $socket.Connected
+    }
+    finally {
+        $socket.Close()
+    }
+}
+
 #функция пинга и описания результата
 Function Test-Conn {
     param (
@@ -19,27 +35,29 @@ Function Test-Conn {
     [string]$port
     )
     $Error.Clear()
-    if (Test-Connection $objname -Count 2 -Quiet) { $result = $description + " пингуется`r`n" }
+    if (Test-Connection $objname -Count 1) { $result = $description + " пингуется`r`n" }
     else {
-        try {Test-Connection $objname -Count 1 -EA Stop}
-        catch {}
         $result = $description + " НЕ пингуется. `r`n"
         $result = $result + "Ошибка: " + $Error[0] + "`r`n"
+        $exept++
         }
-    if ($port -ne "0") {
-        $connetction = New-Object System.Net.Sockets.TcpClient($objname, $port)
-        if ($connetction.Connected)
-        {$result = $result + $port + " порт для " + $description + " доступен `r`n"}
+    $text.AppendText($result)
+    if ($port -ne "0") { 
+        if (TestTCP -address $objname -port $port) {
+            $result = $port + " порт для " + $description + " доступен `r`n"
+        }
         else {
-        $result = $description + $port + " порт недоступен. `r`n"
-        $result = $result + "Ошибка: " + $Error[0] + "`r`n"
+            $result = $description + " " + $port + " порт НЕ доступен. `r`n"
+            $result = $result + "Ошибка: " + $Error[0] + "`r`n"
         }
+    $text.AppendText($result)
+    Write-Host $exept
     }
-   $text.AppendText($result)
 }
 
 #Создание формы
 $i=0
+$exept=0
 Add-Type -Assemblyname System.Windows.Forms
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Диагностика'
@@ -56,7 +74,7 @@ $bar.Size = New-Object System.Drawing.Size(450,20)
 $form.Controls.Add($bar)
 $text = New-Object System.Windows.Forms.TextBox
 $text.Multiline = $true
-$text.Text = 'Нажми кнопку "Диагностика" или клавишу Enter'
+$text.Text = 'Нажми кнопку "Диагностика" или клавишу Enter. Либо введи адрес сервера или сайта для диагностики подключения и нажми кнопку "Тестировать подключение"'
 $text.Location = New-Object System.Drawing.Point(20,40)
 $text.Size = New-Object System.Drawing.Point(450,350)
 $form.Controls.Add($text)
@@ -87,7 +105,7 @@ $custom.Size = New-Object System.Drawing.Size 200,50
 #Действие по нажатии кнопки Диагностика
 $button.Add_Click({
     $bar.Value = $i
-    $result = (Get-NetIPAddress -IPAddress mask_for_IP*).IPaddress #вместо mask_for_IP вписать преффикс сети
+    $result = (Get-NetIPAddress -IPAddress 10.96*).IPaddress
     $text.Text = "IP адрес компьютера: " + $result + "`r`n"
     $i++
     $bar.Value = $i
@@ -100,12 +118,16 @@ $button.Add_Click({
         $i++
         $bar.Value = $i
     }
-    $label.Text='Скопируйте и отправьте это сообщение в службу поддержки'
+    if ($exept -ne 0) {
+        $label.Text = "Что-то не работает. Иммет смысл обратить в лужбу поддержки, отправиа им эту диагностическую информацию.`r`n"
+    }
+    else { $label.Text = "Кажется, все ОК." }
     })
 
+#Действие по нажатии кнопки Кастомной проверки
 $custom.Add_Click({
     $objname = $text.Text
-    $result = (Get-NetIPAddress -IPAddress mask_for_IP*).IPaddress #вместо mask_for_IP вписать преффикс сети
+    $result = (Get-NetIPAddress -IPAddress 10.96*).IPaddress
     $text.Text = "IP адрес компьютера: " + $result + "`r`n"
     Test-Conn -description $objname -objname $objname -port 443
     $bar.Value = $bar.Maximum
